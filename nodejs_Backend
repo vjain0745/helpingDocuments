@@ -1,0 +1,282 @@
+1. npm init 
+	-->  npm install express joi nodemon body-parser glob cors jwt mongoose mongoose-double multer-s3 multer aws-sdk --save
+2. make app.js or server.js or index.js file 
+3. make 5 folders 
+	
+	1. Controllers
+	2. Routes
+	3. Models
+	4. Modules
+	5. Config
+	
+
+4. Add snipet in app.js or server.js or index.js whichever you have created
+
+		var http = require("http");
+		var express = require("express");
+		var cors = require("cors");
+		var path = require("path");
+		var glob = require("glob");  // to match 
+
+
+		var bodyParser = require("body-parser");
+
+		const app = express();
+		app.server = http.createServer(app);
+
+		app.use(bodyParser.urlencoded({
+			extended: true
+		}));
+
+		app.use(bodyParser.json());
+		app.use(express.static(path.join(__dirname, '/Upload')));
+
+		app.use(cors());
+
+		let initRoutes = () => {
+			// including all routes // glob match the pattern as url //
+			glob('./Routes/*.js', { cwd: path.resolve("./")}, (err, routes) => {
+				if (err) {
+					console.log("Error occured including routes");
+					return;
+				}
+				routes.forEach((routePath) => {
+					require(routePath).getRouter(app); // eslint-disable-line
+				});
+				//cron.reminder();
+				console.log("included " + routes.length + " route files");
+			});
+
+			// app.use("/supplierpanel", express.static(path.join(__dirname, 'dist', 'supplierpanel')));
+			// app.get('/supplierpanel/*', (req, res) => {
+			// 	res.sendFile(path.join(__dirname, 'dist', 'supplierpanel', 'index.html'));
+			// })
+			// app.use("/adminpanel", express.static(path.join(__dirname, 'dist','adminpanel')));
+			// app.get('/adminpanel/*', (req, res) => {
+			// 	res.sendFile(path.join(__dirname, 'dist', 'adminpanel', 'index.html'))
+			// })
+			// app.use("/restaurantpanel", express.static(path.join(__dirname, 'dist', 'restaurantpanel')));
+			// app.get('/restaurantpanel/*', (req, res) => {
+			// 	res.sendFile(path.join(__dirname, 'dist', 'restaurantpanel', 'index.html'));
+			// }) 
+		}
+
+		app.use('/ping', function (req, res) {
+			res.json("shi chal rha hai !")
+		})
+
+		app.use('/log', function (req, res) {
+			res.sendFile(`${__dirname}/debug.log`)
+		})
+
+
+		initRoutes(app);
+		const port = process.env.PORT || 3000;
+
+		app.server.listen(port);
+
+		console.log(" Started on port :: * * " + port);
+
+5. In Models create a new file like userModel.js 
+
+		const { mongoose, conn } = require('../Modules/connection');
+		require('mongoose-double')(mongoose);
+		mongoose.set('useCreateIndex', true);
+
+		var SchemaTypes = mongoose.Schema.Types;
+		let userSchema = new mongoose.Schema({
+
+		    name: {
+			type: String,
+				},    
+		    profileImage: {
+			type: String,
+			default: 'NA'
+		    },
+		}, 
+		{
+		    versionKey: false,
+		    collection: 'users'
+        	    timestamps: true,
+
+		});
+		exports.UserModel = conn.model('users', userSchema);
+
+6. In controllers make a new file like userControllers.js and start creating your api's
+
+		var {UserModel} = require('../Models/UserModel')
+		const Joi = require('joi');
+
+		/*-------------------------------
+		+++++++++++++ signup ++++++++++++ checkgit 
+		--------------------------------*/
+
+		exports.signup = async (req, res) => {
+
+		    try {
+			console.log(req.body)
+			let { name, email, country_code, mobile_number, password,country_name , gender, 
+			    latitude, longitude } = req.body;
+
+
+			const schema = Joi.object().keys({
+			    email: Joi.string().email().required().error(e => 'email is required.'),
+		
+			    name: Joi.string().required().error(e => 'name is required.'),				// Joi
+			    country_code: Joi.number().required().error(e => 'country code is required'),
+			    mobile_number: Joi.number().required().error(e => 'Mobile number required.'),
+			    password: Joi.string().required().error(e => 'password is required.'),
+			    latitude: Joi.string().optional().error(e => 'latitude is required.'),
+			    longitude: Joi.string().optional().error(e => 'longitude is required.'),
+			    country_name:  Joi.string().required().error(e => 'country_name is  required.'),
+			    gender:  Joi.string().required().error(e => 'gender is  required.'),
+
+
+			})
+			const result = Joi.validate(req.body, schema, { abortEarly: true });
+			if (result.error) {
+			    if (result.error.details && result.error.details[0].message) {
+				res.status(403).json({ message: result.error.details[0].message });
+			    } else {
+				res.status(403).json({ message: result.error.message });
+			    }
+			    return;
+			}
+
+7. In Routes folder make a new a  file like userRoutes 
+
+		var user = require('../Controllers/userController');
+		const s3 = require('../Modules/aws-s3')
+	-->	import auth file from modules 
+
+		exports.getRouter = (app) => {
+		    app.route("/user/signup").post(auth.requiresLogin() , s3.uploadUserFiles , user.signup);
+
+		}
+
+8. In Modules folder make a new file like auth.js
+	
+		exports.requiresLogin = async (req, res, next) => { 			// you can call this method in routes to verify token
+		    let {access_token} = req.headers;
+		    if (access_token) {
+			let user = await UserModel.findOne({access_token})
+
+			if(!user) {
+			    (responses.authenticationErrorResponse(res));
+			    return;
+			}
+			req.userData = user;
+			next();
+		    } else {
+			res.status(403).json({message : "Access token missing"});
+			return
+		    }
+		}
+
+
+9. make a new file in Config folder like config.json to add aws credentials
+
+			{
+			    "S3_SecretKey": "WxBJCpOc8cTQH8/LAQahN7tEQU3eUs3BjVTKXfee",
+			    "S3_AccessKey": "AKIA5SKZIDH2ZOUFD7G4",
+			    "S3_Region": "me-south-1",
+			    "S3_BucketName" : "cloutimages"
+			}
+
+10. In Modules make a new file like aws-s3.js
+
+
+			const config = require('../Config/config.json');
+			var aws = require('aws-sdk');
+			var multer = require('multer');
+			const multerS3 = require('multer-s3');
+
+			aws.config.update({
+			    secretAccessKey: config.S3_SecretKey,
+			    accessKeyId: config.S3_AccessKey,
+			    region: config.S3_Region
+			});
+
+			const path = require('path');
+			const md5 = require("md5");
+			var s3 = new aws.S3();
+
+			console.log(" data :",config.S3_AccessKey);
+			let upload = multer({
+			    storage: multerS3({
+				s3: s3,
+				bucket: config.S3_BucketName,
+				contentType: multerS3.AUTO_CONTENT_TYPE,
+				LocationConstraint: multerS3.AWS_DEFAULT_REGION,
+				acl: 'private',
+				metadata: function (req, file, cb) {
+				    cb(null, {
+					fieldName: file.fieldname
+				    });
+				},
+				key: function (req, file, cb) {
+				    console.log("Original Image :",file.originalname);
+				    cb(null,"Uploads/" + Date.now() + "/" + file.originalname)
+
+				}
+			    })
+			});
+
+			exports.uploadFiles = async (req, res, next) => {
+			    console.log("qwert")
+			    await upload.fields([
+				{
+				    name: 'image',
+				    maxCount: 5
+				}
+			    ])
+				(req, res, (err, some) => {
+				    if (err) {
+					return res.status(422).send({
+					    message: err.message,
+					    response: null
+					});
+				    }
+
+				    next();
+				});
+			};
+
+11. Make a Connection file in Modules like connection.js
+
+				const mongoose = require('mongoose');
+
+				// when we use server in local 
+				 //const conn = mongoose.createConnection("mongodb://clout:clout2021dev@15.184.23.243:27017/cloutapp", 					{ useFindAndModify: false , useNewUrlParser: true,useUnifiedTopology: true  }); // connect to server
+				//const baseUrl = "http://localhost:4200"
+
+				// when we push data from local to server
+				const conn = mongoose.createConnection("mongodb://clout:clout2021dev@127.0.0.1:27017/cloutapp",	
+                		 { useFindAndModify: false , useNewUrlParser: true,useUnifiedTopology: true  }); // connect to server
+				const baseUrl = "http://15.184.23.243"
+
+				//comment 
+
+				console.log('DB name ' + conn.name);
+
+				exports.mongoose = mongoose;
+				exports.baseUrl = baseUrl
+				exports.conn = conn;
+
+12. Make a new file in Modules like commonfunction.js
+
+				var jwt = require("jsonwebtoken")
+
+
+				exports.jwttoken =  ()=> {
+				    const token = {
+					access_token: Date.now()
+				    }
+
+				   var tokenn = jwt.sign({ token }, 'secretkey' )
+				   return tokenn
+				    
+				} 
+
+13.
+
